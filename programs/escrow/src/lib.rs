@@ -30,7 +30,7 @@ pub mod escrow {
     pub fn initialize_escrow(
         ctx: Context<InitializeEscrow>,
         initializer_amount: u64,
-        taker_amount: u64,
+        taker_rate: u64,
     ) -> ProgramResult {
         ctx.accounts.escrow_account.initializer_key = *ctx.accounts.initializer.key;
         ctx.accounts
@@ -48,7 +48,7 @@ pub mod escrow {
             .to_account_info()
             .key;
         ctx.accounts.escrow_account.initializer_amount = initializer_amount;
-        ctx.accounts.escrow_account.taker_amount = taker_amount;
+        ctx.accounts.escrow_account.taker_rate = taker_rate;
 
         let (pda, _bump_seed) = Pubkey::find_program_address(&[ESCROW_PDA_SEED], ctx.program_id);
         token::set_authority(ctx.accounts.into(), AuthorityType::AccountOwner, Some(pda))?;
@@ -70,29 +70,27 @@ pub mod escrow {
         Ok(())
     }
 
-    pub fn exchange(ctx: Context<Exchange>) -> ProgramResult {
+    pub fn exchange(
+        ctx: Context<Exchange>,
+        swap_amount: u64,
+    ) -> ProgramResult {
         // Transferring from initializer to taker
         let (_pda, bump_seed) = Pubkey::find_program_address(&[ESCROW_PDA_SEED], ctx.program_id);
         let seeds = &[&ESCROW_PDA_SEED[..], &[bump_seed]];
+
+        let taker_amount: u64 = swap_amount * ctx.accounts.escrow_account.taker_rate;
+        msg!("Swaping for total taker_amount: {}", taker_amount);
 
         token::transfer(
             ctx.accounts
                 .into_transfer_to_taker_context()
                 .with_signer(&[&seeds[..]]),
-            ctx.accounts.escrow_account.initializer_amount,
+            taker_amount,
         )?;
 
         token::transfer(
             ctx.accounts.into_transfer_to_initializer_context(),
-            ctx.accounts.escrow_account.taker_amount,
-        )?;
-
-        token::set_authority(
-            ctx.accounts
-                .into_set_authority_context()
-                .with_signer(&[&seeds[..]]),
-            AuthorityType::AccountOwner,
-            Some(ctx.accounts.escrow_account.initializer_key),
+            swap_amount,
         )?;
 
         Ok(())
@@ -117,6 +115,7 @@ pub struct InitializeEscrow<'info> {
 }
 
 #[derive(Accounts)]
+#[instruction(swap_amount: u64)]
 pub struct Exchange<'info> {
     #[account(signer)]
     pub taker: AccountInfo<'info>,
@@ -129,14 +128,15 @@ pub struct Exchange<'info> {
     #[account(mut)]
     pub initializer_receive_token_account: Account<'info, TokenAccount>,
     #[account(mut)]
-    pub initializer_main_account: AccountInfo<'info>,
+    pub initializer_main_account: AccountInfo<'info>, // TODO Get ride of this, ah cuz we close it...
+    // removed this account param below: close = initializer_main_account
     #[account(
         mut,
-        constraint = escrow_account.taker_amount <= taker_deposit_token_account.amount,
+        constraint = swap_amount <= taker_deposit_token_account.amount,
+        constraint = (escrow_account.taker_rate * swap_amount) <= pda_deposit_token_account.amount,
         constraint = escrow_account.initializer_deposit_token_account == *pda_deposit_token_account.to_account_info().key,
         constraint = escrow_account.initializer_receive_token_account == *initializer_receive_token_account.to_account_info().key,
         constraint = escrow_account.initializer_key == *initializer_main_account.key,
-        close = initializer_main_account
     )]
     pub escrow_account: Account<'info, EscrowAccount>,
     pub pda_account: AccountInfo<'info>,
@@ -165,7 +165,7 @@ pub struct EscrowAccount {
     pub initializer_deposit_token_account: Pubkey,
     pub initializer_receive_token_account: Pubkey,
     pub initializer_amount: u64,
-    pub taker_amount: u64,
+    pub taker_rate: u64,
 }
 
 impl EscrowAccount {
