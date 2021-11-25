@@ -139,7 +139,7 @@ describe("escrow", () => {
     );
   });
 
-  it("Exchange escrow", async () => {
+  it("Exchange 1 escrow", async () => {
     await program.rpc.exchange(
         new BN(swapAmount),
         {
@@ -174,9 +174,36 @@ describe("escrow", () => {
     assert.ok(_takerTokenAccountB.amount.toNumber() == takerAmount - swapAmount);
   });
 
-  let newEscrow = Keypair.generate();
+  it("Exchange 2 escrow", async () => {
+    await program.rpc.exchange(
+        new BN(swapAmount),
+        {
+          accounts: {
+            taker: provider.wallet.publicKey,
+            takerDepositTokenAccount: takerTokenAccountB,
+            takerReceiveTokenAccount: takerTokenAccountA,
+            pdaDepositTokenAccount: initializerTokenAccountA,
+            initializerReceiveTokenAccount: initializerTokenAccountB,
+            initializerMainAccount: provider.wallet.publicKey,
+            escrowAccount: escrowAccount.publicKey,
+            pdaAccount: pda,
+            tokenProgram: TOKEN_PROGRAM_ID,
+          },
+        });
+
+    let _takerTokenAccountA = await mintA.getAccountInfo(takerTokenAccountA);
+    assert.ok(_takerTokenAccountA.amount.toNumber() == 2*(swapAmount * takerRate));
+
+  });
 
   it("Cancel escrow", async () => {
+
+    // Check that PDA still owns initializer token accounts
+    let _initializerTokenAccountA = await mintA.getAccountInfo(initializerTokenAccountA);
+    let _initializerTokenAccountB = await mintB.getAccountInfo(initializerTokenAccountB);
+
+    assert.ok(_initializerTokenAccountA.owner.equals(pda));
+    assert.ok(_initializerTokenAccountB.owner.equals(pda));
 
     // Cancel the escrow.
     await program.rpc.cancelEscrow({
@@ -190,16 +217,13 @@ describe("escrow", () => {
       },
     });
 
-  //   // Check the final owner should be the provider public key.
-  //   _initializerTokenAccountA = await mintA.getAccountInfo(
-  //     initializerTokenAccountA
-  //   );
-  //   assert.ok(
-  //     _initializerTokenAccountA.owner.equals(provider.wallet.publicKey)
-  //   );
-  //
-  //   // Check all the funds are still there.
-  //   assert.ok(_initializerTokenAccountA.amount.toNumber() == initializerAmount);
+    // Check the final owner should be the provider public key.
+    _initializerTokenAccountA = await mintA.getAccountInfo(initializerTokenAccountA);
+    _initializerTokenAccountB = await mintB.getAccountInfo(initializerTokenAccountB);
+
+    assert.ok(_initializerTokenAccountA.owner.equals(provider.wallet.publicKey));
+    assert.ok(_initializerTokenAccountB.owner.equals(provider.wallet.publicKey));
+
   });
 
 });
