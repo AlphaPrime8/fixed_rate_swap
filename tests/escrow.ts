@@ -174,51 +174,22 @@ describe("escrow", () => {
     assert.ok(_takerTokenAccountB.amount.toNumber() == takerAmount - swapAmount);
   });
 
-  // let newEscrow = Keypair.generate();
-  //
-  // it("Initialize escrow and cancel escrow", async () => {
-  //   // Put back tokens into initializer token A account.
-  //   await mintA.mintTo(
-  //     initializerTokenAccountA,
-  //     mintAuthority.publicKey,
-  //     [mintAuthority],
-  //     initializerAmount
-  //   );
-  //
-  //   await program.rpc.initializeEscrow(
-  //     new BN(initializerAmount),
-  //     new BN(takerAmount),
-  //     {
-  //       accounts: {
-  //         initializer: provider.wallet.publicKey,
-  //         initializerDepositTokenAccount: initializerTokenAccountA,
-  //         initializerReceiveTokenAccount: initializerTokenAccountB,
-  //         escrowAccount: newEscrow.publicKey,
-  //         systemProgram: SystemProgram.programId,
-  //         tokenProgram: TOKEN_PROGRAM_ID,
-  //       },
-  //       signers: [newEscrow],
-  //     }
-  //   );
-  //
-  //   let _initializerTokenAccountA = await mintA.getAccountInfo(
-  //     initializerTokenAccountA
-  //   );
-  //
-  //   // Check that the new owner is the PDA.
-  //   assert.ok(_initializerTokenAccountA.owner.equals(pda));
-  //
-  //   // Cancel the escrow.
-  //   await program.rpc.cancelEscrow({
-  //     accounts: {
-  //       initializer: provider.wallet.publicKey,
-  //       pdaDepositTokenAccount: initializerTokenAccountA,
-  //       pdaAccount: pda,
-  //       escrowAccount: newEscrow.publicKey,
-  //       tokenProgram: TOKEN_PROGRAM_ID,
-  //     },
-  //   });
-  //
+  let newEscrow = Keypair.generate();
+
+  it("Cancel escrow", async () => {
+
+    // Cancel the escrow.
+    await program.rpc.cancelEscrow({
+      accounts: {
+        initializer: provider.wallet.publicKey,
+        pdaDepositTokenAccount: initializerTokenAccountA,
+        pdaReceiveTokenAccount: initializerTokenAccountB,
+        pdaAccount: pda,
+        escrowAccount: escrowAccount.publicKey,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      },
+    });
+
   //   // Check the final owner should be the provider public key.
   //   _initializerTokenAccountA = await mintA.getAccountInfo(
   //     initializerTokenAccountA
@@ -229,6 +200,6 @@ describe("escrow", () => {
   //
   //   // Check all the funds are still there.
   //   assert.ok(_initializerTokenAccountA.amount.toNumber() == initializerAmount);
-  // });
+  });
 
 });
