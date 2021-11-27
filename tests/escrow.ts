@@ -1,6 +1,6 @@
 import * as anchor from "@project-serum/anchor";
 import { Program, BN, IdlAccounts } from "@project-serum/anchor";
-import { PublicKey, Keypair, SystemProgram } from "@solana/web3.js";
+import { PublicKey, Keypair, SystemProgram, Account, AccountInfo } from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID, Token } from "@solana/spl-token";
 import { assert } from "chai";
 import { Escrow } from "../target/types/escrow";
@@ -26,7 +26,16 @@ describe("escrow", () => {
   const swapAmount = takerAmount / 2;
   const initializerAmount = (swapAmount * 2) * takerRate; // setup for two exchanges before depletion of supply
 
-  const escrowAccount = Keypair.generate();
+  // TODO lookup pda for escrow account
+  let escrowAccount: PublicKey;
+  let stateSeedName = "state";
+  function StateBumps() {
+    this.escrowAccount;
+  };
+  let bumps = new StateBumps();
+
+
+  //
   const payer = Keypair.generate();
   const mintAuthority = Keypair.generate();
 
@@ -89,20 +98,29 @@ describe("escrow", () => {
   });
 
   it("Initialize escrow", async () => {
+
+    const [_tmpEC, escrowAccountBump] = await anchor.web3.PublicKey.findProgramAddress(
+        [Buffer.from(stateSeedName)],
+        program.programId
+    );
+    escrowAccount = _tmpEC;
+    bumps.escrowAccount = escrowAccountBump;
+
     await program.rpc.initializeEscrow(
-      new BN(initializerAmount),
-      new BN(takerRate),
-      {
-        accounts: {
-          initializer: provider.wallet.publicKey,
-          initializerDepositTokenAccount: initializerTokenAccountA,
-          initializerReceiveTokenAccount: initializerTokenAccountB,
-          escrowAccount: escrowAccount.publicKey,
-          systemProgram: SystemProgram.programId,
-          tokenProgram: TOKEN_PROGRAM_ID,
-        },
-        signers: [escrowAccount],
-      }
+        new BN(initializerAmount),
+        new BN(takerRate),
+        bumps,
+        stateSeedName,
+        {
+          accounts: {
+            initializer: provider.wallet.publicKey,
+            initializerDepositTokenAccount: initializerTokenAccountA,
+            initializerReceiveTokenAccount: initializerTokenAccountB,
+            escrowAccount: escrowAccount,
+            systemProgram: SystemProgram.programId,
+            tokenProgram: TOKEN_PROGRAM_ID,
+          },
+        }
     );
 
     // Get the PDA that is assigned authority to token account.
@@ -118,7 +136,7 @@ describe("escrow", () => {
     );
 
     let _escrowAccount: EscrowAccount =
-      await program.account.escrowAccount.fetch(escrowAccount.publicKey);
+      await program.account.escrowAccount.fetch(escrowAccount);
 
     // Check that the new owner is the PDA.
     assert.ok(_initializerTokenAccountA.owner.equals(pda));
@@ -137,6 +155,11 @@ describe("escrow", () => {
         initializerTokenAccountB
       )
     );
+
+    //TODO Check that PDA owns escrow account also
+    // _escrowAccount = await AccountInfo.getAccountInfo(escrowAccount);
+    // assert.ok(_escrowAccount.owner.equals(pda));
+
   });
 
   it("Exchange 1 escrow", async () => {
@@ -150,7 +173,7 @@ describe("escrow", () => {
             pdaDepositTokenAccount: initializerTokenAccountA,
             initializerReceiveTokenAccount: initializerTokenAccountB,
             initializerMainAccount: provider.wallet.publicKey,
-            escrowAccount: escrowAccount.publicKey,
+            escrowAccount: escrowAccount,
             pdaAccount: pda,
             tokenProgram: TOKEN_PROGRAM_ID,
           },
@@ -185,7 +208,7 @@ describe("escrow", () => {
             pdaDepositTokenAccount: initializerTokenAccountA,
             initializerReceiveTokenAccount: initializerTokenAccountB,
             initializerMainAccount: provider.wallet.publicKey,
-            escrowAccount: escrowAccount.publicKey,
+            escrowAccount: escrowAccount,
             pdaAccount: pda,
             tokenProgram: TOKEN_PROGRAM_ID,
           },
@@ -212,7 +235,7 @@ describe("escrow", () => {
         pdaDepositTokenAccount: initializerTokenAccountA,
         pdaReceiveTokenAccount: initializerTokenAccountB,
         pdaAccount: pda,
-        escrowAccount: escrowAccount.publicKey,
+        escrowAccount: escrowAccount,
         tokenProgram: TOKEN_PROGRAM_ID,
       },
     });

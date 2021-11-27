@@ -1,23 +1,9 @@
-//! An example of an escrow program, inspired by PaulX tutorial seen here
-//! https://paulx.dev/blog/2021/01/14/programming-on-solana-an-introduction/
-//! This example has some changes to implementation, but more or less should be the same overall
-//! Also gives examples on how to use some newer anchor features and CPI
-//!
-//! User (Initializer) constructs an escrow deal:
-//! - SPL token (X) they will offer and amount
-//! - SPL token (Y) count they want in return and amount
-//! - Program will take ownership of initializer's token X account
-//!
-//! Once this escrow is initialised, either:
-//! 1. User (Taker) can call the exchange function to exchange their Y for X
-//! - This will close the escrow account and no longer be usable
-//! OR
-//! 2. If no one has exchanged, the initializer can close the escrow account
-//! - Initializer will get back ownership of their token X account
+//
 
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, SetAuthority, Token, TokenAccount, Transfer};
 use spl_token::instruction::AuthorityType;
+use std::ops::Deref;
 
 declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
 
@@ -26,12 +12,29 @@ pub mod escrow {
     use super::*;
 
     const ESCROW_PDA_SEED: &[u8] = b"escrow";
+    const STATE_PDA_SEED: &[u8] = b"state";
 
     pub fn initialize_escrow(
         ctx: Context<InitializeEscrow>,
         initializer_amount: u64,
         taker_rate: u64,
+        bumps: StateBumps,
+        state_seed_name: String,
     ) -> ProgramResult {
+
+        // check if already initialized, and if so then throw custom error
+        // confirm correct state_account is passed in
+        let (pda, _bump_seed) = Pubkey::find_program_address(&[STATE_PDA_SEED], ctx.program_id);
+        if pda.key() != *ctx.accounts.escrow_account.to_account_info().key {
+            return Err(ErrorCode::InvalidStateAccount.into());
+        }
+
+        // add pda data to escrow
+        let name_bytes = state_seed_name.as_bytes();
+        let mut name_data = [b' '; 10];
+        name_data[..name_bytes.len()].copy_from_slice(name_bytes);
+        ctx.accounts.escrow_account.state_seed_name = name_data;
+        ctx.accounts.escrow_account.bumps = bumps;
 
         // setup escrow state account
         ctx.accounts.escrow_account.initializer_key = *ctx.accounts.initializer.key;
@@ -113,7 +116,7 @@ pub mod escrow {
 }
 
 #[derive(Accounts)]
-#[instruction(initializer_amount: u64)]
+#[instruction(initializer_amount: u64, taker_rate: u64, bumps: StateBumps, state_seed_name: String)]
 pub struct InitializeEscrow<'info> {
     #[account(signer)]
     pub initializer: AccountInfo<'info>,
@@ -121,7 +124,12 @@ pub struct InitializeEscrow<'info> {
     pub initializer_deposit_token_account: Account<'info, TokenAccount>,
     #[account(mut)]
     pub initializer_receive_token_account: Account<'info, TokenAccount>,
-    #[account(init, payer = initializer, space = 8 + EscrowAccount::LEN)]
+    #[account(init,
+    seeds = [state_seed_name.as_bytes()],
+    bump = bumps.escrow_account,
+    payer = initializer,
+    space = 8 + EscrowAccount::LEN,
+    )]
     pub escrow_account: Account<'info, EscrowAccount>,
     pub system_program: Program<'info, System>,
     pub token_program: Program<'info, Token>,
@@ -145,6 +153,8 @@ pub struct Exchange<'info> {
     // removed this account param below: close = initializer_main_account
     #[account(
         mut,
+        seeds = [escrow_account.state_seed_name.as_ref().trim_ascii_whitespace()],
+        bump = escrow_account.bumps.escrow_account,
         constraint = swap_amount <= taker_deposit_token_account.amount,
         constraint = (escrow_account.taker_rate * swap_amount) <= pda_deposit_token_account.amount,
         constraint = escrow_account.initializer_deposit_token_account == *pda_deposit_token_account.to_account_info().key,
@@ -166,6 +176,8 @@ pub struct CancelEscrow<'info> {
     pub pda_account: AccountInfo<'info>,
     #[account(
         mut,
+        seeds = [escrow_account.state_seed_name.as_ref().trim_ascii_whitespace()],
+        bump = escrow_account.bumps.escrow_account,
         constraint = escrow_account.initializer_key == *initializer.key,
         constraint = escrow_account.initializer_deposit_token_account == *pda_deposit_token_account.to_account_info().key,
         close = initializer
@@ -181,10 +193,17 @@ pub struct EscrowAccount {
     pub initializer_receive_token_account: Pubkey,
     pub initializer_amount: u64,
     pub taker_rate: u64,
+    pub state_seed_name: [u8; 10],
+    pub bumps: StateBumps,
 }
 
 impl EscrowAccount {
-    pub const LEN: usize = 32 + 32 + 32 + 8 + 8;
+    pub const LEN: usize = 32 + 32 + 32 + 8 + 8 + 10 + 1;
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Default, Clone)]
+pub struct StateBumps {
+    pub escrow_account: u8,
 }
 
 impl<'info> InitializeEscrow<'info> {
@@ -256,5 +275,29 @@ impl<'info> Exchange<'info> {
         };
         let cpi_program = self.token_program.to_account_info();
         CpiContext::new(cpi_program, cpi_accounts)
+    }
+}
+
+#[error]
+pub enum ErrorCode {
+    #[msg("Invalid State Account.")]
+    InvalidStateAccount,
+}
+
+/// Trait to allow trimming ascii whitespace from a &[u8].
+pub trait TrimAsciiWhitespace {
+    /// Trim ascii whitespace (based on `is_ascii_whitespace()`) from the
+    /// start and end of a slice.
+    fn trim_ascii_whitespace(&self) -> &[u8];
+}
+
+impl<T: Deref<Target = [u8]>> TrimAsciiWhitespace for T {
+    fn trim_ascii_whitespace(&self) -> &[u8] {
+        let from = match self.iter().position(|x| !x.is_ascii_whitespace()) {
+            Some(i) => i,
+            None => return &self[0..0],
+        };
+        let to = self.iter().rposition(|x| !x.is_ascii_whitespace()).unwrap();
+        &self[from..=to]
     }
 }
