@@ -5,7 +5,7 @@ use anchor_spl::token::{self, SetAuthority, Token, TokenAccount, Transfer};
 use spl_token::instruction::AuthorityType;
 use std::ops::Deref;
 
-declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
+declare_id!("FroG6rb4BfRMNqfvzL3sML2MYGBjzbvC6nKrTQQheiYr");
 
 #[program]
 pub mod escrow {

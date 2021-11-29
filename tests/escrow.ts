@@ -135,7 +135,7 @@ describe("escrow", () => {
       initializerTokenAccountA
     );
 
-    let _escrowAccount: EscrowAccount =
+    let _escrowAccount =
       await program.account.escrowAccount.fetch(escrowAccount);
 
     // Check that the new owner is the PDA.
@@ -155,10 +155,6 @@ describe("escrow", () => {
         initializerTokenAccountB
       )
     );
-
-    //TODO Check that PDA owns escrow account also
-    // _escrowAccount = await AccountInfo.getAccountInfo(escrowAccount);
-    // assert.ok(_escrowAccount.owner.equals(pda));
 
   });
 
