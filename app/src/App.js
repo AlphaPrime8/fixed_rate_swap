@@ -7,12 +7,14 @@ import { useWallet, WalletProvider, ConnectionProvider } from '@solana/wallet-ad
 import { WalletModalProvider, WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { TOKEN_PROGRAM_ID, Token } from "@solana/spl-token";
 
+// const spl_token = require("@solana/spl-token");
 const idl = require('./idl.json');
+const metaplex = require("@metaplex/js");
 require('@solana/wallet-adapter-react-ui/styles.css');
 
 const wallets = [ getPhantomWallet() ]
-const network = "http://127.0.0.1:8899";
-// const network = clusterApiUrl('devnet');
+// const network = "http://127.0.0.1:8899";
+const network = clusterApiUrl('devnet');
 
 const { SystemProgram, Keypair } = web3;
 const baseAccount = Keypair.generate();
@@ -52,6 +54,32 @@ function App() {
         connection, wallet, opts.preflightCommitment,
     );
     return provider;
+  }
+
+  async function getNftData() {
+    const privKey = [216,203,114,212,61,127,24,46,108,53,212,228,23,126,248,124,72,139,254,44,177,176,132,204,100,205,16,145,26,12,92,56,68,4,33,19,46,78,84,151,141,18,127,173,233,103,235,16,19,143,164,217,248,245,89,84,96,118,12,209,39,86,48,143];
+    const privArr = Uint8Array.from(privKey);
+    const wallet = web3.Keypair.fromSecretKey(privArr);
+    const provider = await getProvider();
+    // const metaplex_connection = new metaplex.Connection('devnet');
+    const metadata = await metaplex.programs.metadata.Metadata.load(provider.connection, wallet.publicKey.toString());
+    console.log(metadata);
+  }
+
+  async function getNftData_old() {
+    const privKey = [216,203,114,212,61,127,24,46,108,53,212,228,23,126,248,124,72,139,254,44,177,176,132,204,100,205,16,145,26,12,92,56,68,4,33,19,46,78,84,151,141,18,127,173,233,103,235,16,19,143,164,217,248,245,89,84,96,118,12,209,39,86,48,143];
+    const privArr = Uint8Array.from(privKey);
+    const wallet = web3.Keypair.fromSecretKey(privArr);
+    const provider = await getProvider();
+    let accounts = await provider.connection.getTokenAccountsByOwner(wallet.publicKey, { programId: TOKEN_PROGRAM_ID });
+    const metaplex_connection = new metaplex.Connection('devnet');
+    for (const account in accounts.value){
+      let pubKey = accounts.value[account].pubkey.toString();
+      console.log(pubKey);
+      const metadata = await metaplex.programs.metadata.Metadata.load(metaplex_connection, pubKey);
+      console.log(metadata);
+    }
+    window.accounts = accounts;
   }
 
   async function setupMints() {
@@ -153,7 +181,14 @@ function App() {
     setInput('');
   }
 
-  if (!wallet.connected) {
+  if (true) {
+    return (
+        <div className="App">
+          <button onClick={getNftData}>Get NFT Data</button>
+        </div>
+    )
+  }
+  else if (!wallet.connected) {
     return (
         <div style={{ display: 'flex', justifyContent: 'center', marginTop:'100px' }}>
           <WalletMultiButton />
