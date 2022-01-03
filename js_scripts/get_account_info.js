@@ -2,9 +2,8 @@ const web3 =  require('@solana/web3.js');
 const spl_token = require("@solana/spl-token");
 const metaplex = require("@metaplex/js");
 
-const privKey = [216,203,114,212,61,127,24,46,108,53,212,228,23,126,248,124,72,139,254,44,177,176,132,204,100,205,16,145,26,12,92,56,68,4,33,19,46,78,84,151,141,18,127,173,233,103,235,16,19,143,164,217,248,245,89,84,96,118,12,209,39,86,48,143];
-const privArr = Uint8Array.from(privKey);
-const wallet = web3.Keypair.fromSecretKey(privArr);
+const wallet = Keypair.fromSecretKey(Buffer.from(JSON.parse(require("fs").readFileSync("/home/myware/.config/solana/devnet.json", {encoding: "utf-8",}))));
+
 
 (async () => {
     // Connect to cluster
